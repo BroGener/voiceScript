@@ -17,7 +17,7 @@ from reconciler import Reconciler
 from speaker_manager import SpeakerManager
 from transcriber_whisper import WhisperTranscriber
 from transcriber_whisperx import WhisperXTranscriber
-from utils import derive_output_paths, save_json, save_srt
+from utils import assign_seg_ids, derive_output_paths, save_json, save_srt
 
 
 # ---------------------------------------------------------------------------

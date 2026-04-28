@@ -4,6 +4,9 @@ dist/
 isa/
 backup/
 .DS_Store
+__pycache__/
+transcripts/
+pending_mappings/
 *.log
 *.mp3
 *.jpg
