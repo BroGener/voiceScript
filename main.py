@@ -1,31 +1,21 @@
 """
-main.py — Main pipeline orchestrator.
+main.py — CLI entry point.
 
 Usage:
-  python main.py                               # use AUDIO_PATH from config
-  python main.py D:/audio.mp3
-  python main.py D:/audio.mp3 --only-whisper
-  python main.py D:/audio.mp3 --only-whisperx
-  python main.py D:/audio.mp3 --skip-version-check
+  python main.py                          # prompt for audio path
+  python main.py D:/audio.mp3            # specify audio directly
+  python main.py D:/audio.mp3 --mode whisper
+  python main.py D:/audio.mp3 --mode whisperx
+  python main.py D:/audio.mp3 --cut-silence
+  python main.py D:/audio.mp3 --speakers Alice Bob
 
-First run (empty database):
-  → WhisperX uses DiarizationPipeline (cold-start)
-  → pending_mapping.json is written
-  → run: python speaker_setup.py apply
-  → subsequent runs use Route B (constrained clustering)
-
-Silence cutting (standalone):
-  python audio_processor.py D:/audio.mp3
-  python audio_processor.py D:/audio.mp3 --remap
-
-Manual correction (standalone):
-  python correction_tool.py D:/audio.mp3 [--confident]
+Web UI:
+  python main.py --web                   # launch Gradio interface
 """
 
 from __future__ import annotations
 
 import argparse
-import gc
 import sys
 from pathlib import Path
 
@@ -33,132 +23,159 @@ import patches
 patches.apply_all()
 
 from config import cfg
-from reconciler import Reconciler
-from speaker_manager import SpeakerManager
-from transcriber_whisper import WhisperTranscriber
-from transcriber_whisperx import WhisperXTranscriber
-from utils import derive_output_paths, save_json, save_srt
 
 
-def run_pipeline(
-    audio_path: Path,
-    only_whisper: bool = False,
-    only_whisperx: bool = False,
-) -> None:
-    print("\n" + "=" * 62)
-    print(f"  Whisper Suite")
-    print(f"  Audio  : {audio_path.name}")
-    print(f"  Device : {cfg.device.device.upper()}")
-    print("=" * 62)
+# ---------------------------------------------------------------------------
+# Version check — only on first run (no snapshot yet)
+# ---------------------------------------------------------------------------
 
-    out_dir     = cfg.paths.transcripts_dir
-    speaker_mgr = SpeakerManager()
+def _maybe_version_check() -> None:
+    """Run version check only if no snapshot exists yet (i.e. first run)."""
+    snapshot = cfg.paths.version_file
+    if snapshot.exists():
+        return  # Already checked once — skip silently
 
-    # ── Whisper only ──────────────────────────────────────────
-    if only_whisper:
-        t    = WhisperTranscriber()
-        segs = t.transcribe(audio_path)
-        t.unload()
-        p = derive_output_paths(audio_path, out_dir, "_whisper")
-        save_srt(segs, p["srt"])
-        save_json(segs, p["json"])
-        print("\n✅ Whisper transcription complete.")
-        return
-
-    # ── WhisperX only ─────────────────────────────────────────
-    if only_whisperx:
-        t    = WhisperXTranscriber()
-        segs = t.transcribe(audio_path, speaker_manager=speaker_mgr)
-        t.unload()
-        p = derive_output_paths(audio_path, out_dir, "_whisperx")
-        save_srt(segs, p["srt"])
-        save_json(segs, p["json"])
-        print("\n✅ WhisperX transcription complete.")
-        return
-
-    # ── Dual model + reconcile (default) ──────────────────────
-
-    # Step A: Whisper
-    wt     = WhisperTranscriber()
-    w_segs = wt.transcribe(audio_path)
-    wt.unload()
-    wp = derive_output_paths(audio_path, out_dir, "_whisper")
-    save_srt(w_segs, wp["srt"])
-    save_json(w_segs, wp["json"])
-
-    # Step B: WhisperX (Route B or cold-start)
-    wxt     = WhisperXTranscriber()
-    wx_segs = wxt.transcribe(audio_path, speaker_manager=speaker_mgr)
-    wxt.unload()
-    wxp = derive_output_paths(audio_path, out_dir, "_whisperx")
-    save_srt(wx_segs, wxp["srt"])
-    save_json(wx_segs, wxp["json"])
-
-    # Step C: Reconcile
-    merged = Reconciler().reconcile(w_segs, wx_segs)
-    mp = derive_output_paths(audio_path, out_dir, "_reconciled")
-    save_srt(merged, mp["srt"])
-    save_json(merged, mp["json"])
-
-    gc.collect()
-
-    print("\n" + "=" * 62)
-    print("  ✅ Done!")
-    print(f"  📄 Main output : {mp['srt'].name}")
-    print(f"  📄 Whisper     : {wp['srt'].name}")
-    print(f"  📄 WhisperX    : {wxp['srt'].name}")
-    print(f"  📂 Output dir  : {out_dir}")
-
-    if (cfg.paths.pending_mapping_file.exists()):
-        print(f"\n  ⚠️  Cold-start: speaker names needed.")
-        print(f"     Edit: {cfg.paths.pending_mapping_file}")
-        print(f"     Then: python speaker_setup.py apply")
-
-    print("=" * 62)
-
-
-def run_version_check(strict: bool = False) -> None:
-    from version_checker import collect_versions, compare_snapshots, load_snapshot, save_snapshot
-    snapshot_path = cfg.paths.version_file
+    print("📋 First run: checking environment versions ...")
+    from version_checker import collect_versions, save_snapshot
     current = collect_versions()
-    saved   = load_snapshot(snapshot_path)
-    if saved is None:
-        print("\n⚠️  No version snapshot found — generating one now...")
-        save_snapshot(current, snapshot_path)
-        print("   Snapshot saved. Future runs will compare against it.\n")
-    else:
-        ok = compare_snapshots(current, saved, strict=strict)
-        if not ok:
-            print("\n⚠️  Differences found. If everything runs fine, ignore them.")
-            print("   To update snapshot: python version_checker.py\n")
+    save_snapshot(current, snapshot)
+    print("   Snapshot saved. Future runs will skip this check.\n")
 
+
+# ---------------------------------------------------------------------------
+# Prompt mode
+# ---------------------------------------------------------------------------
+
+def _prompt_and_run() -> None:
+    """Interactive prompt for users who prefer not to use CLI args."""
+    print("\n" + "=" * 55)
+    print("  Whisper Suite — Interactive Mode")
+    print("=" * 55)
+
+    # Audio path
+    while True:
+        raw = input("\nAudio file path (drag & drop or paste): ").strip().strip('"')
+        if not raw:
+            print("  Path cannot be empty.")
+            continue
+        audio = Path(raw)
+        if audio.exists():
+            break
+        print(f"  ❌ File not found: {audio}")
+
+    # Mode
+    print("\nTranscription mode:")
+    print("  1) dual     — Whisper + WhisperX + reconcile (default)")
+    print("  2) whisper  — Whisper only (no speaker labels)")
+    print("  3) whisperx — WhisperX only (with speaker labels)")
+    mode_input = input("Choose [1/2/3, default=1]: ").strip()
+    mode = {"1": "dual", "2": "whisper", "3": "whisperx"}.get(mode_input, "dual")
+
+    # Speaker filter
+    from speaker_manager import SpeakerManager
+    mgr = SpeakerManager()
+    known = mgr.list_speakers()
+    speaker_filter = None
+    if known:
+        print(f"\nKnown speakers: {known}")
+        raw_filter = input(
+            "Restrict matching to specific speakers? (comma-separated, blank=all): "
+        ).strip()
+        if raw_filter:
+            speaker_filter = [s.strip() for s in raw_filter.split(",") if s.strip()]
+
+    # Silence cutting
+    cut = input("\nCut silence before transcribing? [y/N]: ").strip().lower() == "y"
+
+    _run(audio, mode=mode, cut_silence=cut, speaker_filter=speaker_filter)
+
+
+# ---------------------------------------------------------------------------
+# Shared run
+# ---------------------------------------------------------------------------
+
+def _run(
+    audio_path: Path,
+    mode: str = "dual",
+    cut_silence: bool = False,
+    speaker_filter: list[str] | None = None,
+) -> None:
+    from pipeline import run_pipeline
+
+    print(f"\n{'='*55}")
+    print(f"  Audio  : {audio_path.name}")
+    print(f"  Mode   : {mode}")
+    print(f"  Device : {cfg.device.device.upper()}")
+    if speaker_filter:
+        print(f"  Filter : {speaker_filter}")
+    if cut_silence:
+        print(f"  Silence: will cut (remap mode)")
+    print(f"{'='*55}")
+
+    result = run_pipeline(
+        audio_path,
+        mode=mode,
+        cut_silence=cut_silence,
+        speaker_filter=speaker_filter,
+        log=print,
+    )
+
+    print(f"\n{'='*55}")
+    print(f"  ✅  Complete")
+    print(f"  SRT  → {result['output_srt']}")
+    print(f"  JSON → {result['output_json']}")
+
+    if result.get("pending_mapping"):
+        pm = result["pending_mapping"]
+        print(f"\n  ⚠️  Cold-start: open and fill in speaker names:")
+        print(f"     {pm}")
+        print(f"  Then run: python speaker_setup.py apply --mapping {pm.name}")
+
+    print(f"{'='*55}")
+
+
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Whisper Suite — dual-model transcription & speaker diarization",
+        description="Whisper Suite — transcription & speaker diarization",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
-    parser.add_argument("audio",               nargs="?", default=None)
-    parser.add_argument("--only-whisper",       action="store_true")
-    parser.add_argument("--only-whisperx",      action="store_true")
-    parser.add_argument("--skip-version-check", action="store_true")
-    parser.add_argument("--strict-version",     action="store_true")
+    parser.add_argument("audio", nargs="?", default=None,
+                        help="Audio file path (omit to enter interactively)")
+    parser.add_argument("--mode", choices=["dual", "whisper", "whisperx"],
+                        default="dual")
+    parser.add_argument("--cut-silence", action="store_true",
+                        help="Cut silence (remap mode, no re-transcription)")
+    parser.add_argument("--speakers", nargs="*", default=None,
+                        help="Restrict speaker matching to these names")
+    parser.add_argument("--web", action="store_true",
+                        help="Launch Gradio web interface")
     args = parser.parse_args()
 
-    audio_path = Path(args.audio) if args.audio else cfg.audio_path
+    _maybe_version_check()
+
+    if args.web:
+        from gradio_app import launch
+        launch()
+        return
+
+    if args.audio is None:
+        # No path given — interactive prompt
+        _prompt_and_run()
+        return
+
+    audio_path = Path(args.audio)
     if not audio_path.exists():
-        print(f"❌ Audio file not found: {audio_path}")
+        print(f"❌ File not found: {audio_path}")
         sys.exit(1)
 
-    if not args.skip_version_check:
-        run_version_check(strict=args.strict_version)
-
-    run_pipeline(
-        audio_path=audio_path,
-        only_whisper=args.only_whisper,
-        only_whisperx=args.only_whisperx,
-    )
+    _run(audio_path, mode=args.mode,
+         cut_silence=args.cut_silence,
+         speaker_filter=args.speakers or None)
 
 
 if __name__ == "__main__":

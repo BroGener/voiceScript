@@ -1,13 +1,12 @@
 """
 patches.py
 ==========
-所有运行时兼容性补丁，集中管理。
-在任何其他库导入之前 import 此模块即可。
+Runtime compatibility patches. Import before anything else.
 
-包含：
-  1. HuggingFace use_auth_token → token 参数名修复
-  2. NVIDIA DLL 路径注入（解决 Windows 上 cublas64_12.dll 找不到）
-  3. PyTorch 2.6 安全检查绕过（weights_only 问题）
+Patches:
+  1. HuggingFace use_auth_token → token rename
+  2. NVIDIA DLL path injection (Windows: fixes cublas64_12.dll not found)
+  3. PyTorch 2.6+ weights_only bypass for pyannote/lightning model loading
 """
 
 from __future__ import annotations
@@ -49,23 +48,64 @@ def _apply_nvidia_dll_patch() -> None:
 
 
 def _apply_torch_patch() -> None:
+    """
+    Fix PyTorch 2.6+ weights_only=True breaking pyannote/lightning model loading.
+
+    Root cause: lightning_fabric._load() calls torch.load(..., weights_only=True)
+    explicitly. Our patch must FORCE weights_only=False, not just setdefault.
+
+    Two-layer approach:
+      1. Force weights_only=False in the patched torch.load wrapper.
+      2. Whitelist omegaconf types via add_safe_globals as a fallback,
+         in case any caller internally uses weights_only=True through
+         a reference we cannot intercept.
+    """
     try:
         import torch
+
+        # Layer 1: whitelist omegaconf globals that pyannote checkpoints contain
+        try:
+            import omegaconf
+            from omegaconf import DictConfig, ListConfig
+            if hasattr(torch.serialization, "add_safe_globals"):
+                torch.serialization.add_safe_globals([DictConfig, ListConfig])
+        except (ImportError, Exception):
+            pass
+
+        # Layer 2: force weights_only=False on every torch.load call
+        # Use FORCE (not setdefault) because lightning passes weights_only=True explicitly
         _orig_load = torch.load
 
         def _patched_load(*args, **kwargs):
-            kwargs.setdefault("weights_only", False)
+            kwargs["weights_only"] = False   # force, not setdefault
             return _orig_load(*args, **kwargs)
 
         torch.load = _patched_load
+
+        # Also patch the internal serialization module reference
         if hasattr(torch, "serialization"):
             torch.serialization.load = _patched_load
+
+        # Patch lightning_fabric directly if already imported
+        # (handles cases where lightning cached the reference before our patch)
+        try:
+            import lightning_fabric.utilities.cloud_io as _lf_io
+            _lf_io._load = _patched_load
+        except (ImportError, AttributeError):
+            pass
+
+        try:
+            import pytorch_lightning.utilities.cloud_io as _pl_io
+            _pl_io._load = _patched_load
+        except (ImportError, AttributeError):
+            pass
+
     except ImportError:
         pass
 
 
 def apply_all() -> None:
-    """在程序入口处调用一次即可。"""
-    _apply_nvidia_dll_patch()  # DLL 路径要在 torch 导入前完成
+    """Call once at program entry, before any other imports."""
+    _apply_nvidia_dll_patch()   # must run before torch import
     _apply_torch_patch()
     _apply_hf_patch()

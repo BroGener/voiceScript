@@ -374,7 +374,8 @@ class AudioProcessor:
                 # 在这段语音前插入 0.05s 的 -90dB 白噪声作为裁剪点标记
                 noise_label = f"n{i}"
                 filter_parts.append(
-                    f"anoisesrc=d=0.05:c=white:a=0.000003[{noise_label}]"
+                    #f"anoisesrc=d=0.05:c=white:a=0.000003[{noise_label}]"
+                    f"anoisesrc=d=0.15:c=white:a=0.08,bandpass=f=1500:width_type=o:w=2[{noise_label}]"
                 )
                 segment_labels.append(noise_label)
             segment_labels.append(label)

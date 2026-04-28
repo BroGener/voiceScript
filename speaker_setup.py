@@ -47,10 +47,24 @@ from utils import load_json, save_srt, save_json
 # ---------------------------------------------------------------------------
 
 def cmd_apply(args) -> None:
-    mapping_path = cfg.paths.pending_mapping_file
+    mapping_dir = cfg.paths.pending_mapping_dir
+    if args.mapping:
+        mp = Path(args.mapping)
+        mapping_path = mp if mp.is_absolute() else mapping_dir / mp
+    else:
+        candidates = list(mapping_dir.glob("pending_*.json"))
+        if not candidates:
+            print(f"❌ No pending mapping files found in: {mapping_dir}")
+            print("   Run main.py first to generate a cold-start transcription.")
+            sys.exit(1)
+        if len(candidates) > 1:
+            print(f"⚠️  Multiple pending mappings — specify one with --mapping:")
+            for c in candidates:
+                print(f"     {c.name}")
+            sys.exit(1)
+        mapping_path = candidates[0]
     if not mapping_path.exists():
-        print(f"❌ No pending mapping found at: {mapping_path}")
-        print("   Run main.py first to generate a cold-start transcription.")
+        print(f"❌ Mapping file not found: {mapping_path}")
         sys.exit(1)
 
     mapping_data = json.loads(mapping_path.read_text(encoding="utf-8"))
@@ -304,6 +318,8 @@ def main() -> None:
     p_apply = sub.add_parser("apply", help="Apply pending_mapping.json")
     p_apply.add_argument("--audio",  type=str, default=None,
                          help="Path to the source audio file")
+    p_apply.add_argument("--mapping", type=str, default=None,
+                         help="pending_<stem>.json filename or path (auto-detected if omitted)")
     p_apply.add_argument("--anchor", action="store_true",
                          help="Store embeddings as gold-standard anchors")
 

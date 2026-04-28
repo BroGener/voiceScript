@@ -377,13 +377,14 @@ class WhisperXTranscriber:
             },
         }
 
-        path = cfg.paths.pending_mapping_file
+        # One mapping file per audio stem — prevents A.mp3 overwriting B.mp3
+        path = cfg.paths.pending_mapping_dir / f"pending_{audio_path.stem}.json"
         path.write_text(json.dumps(mapping, indent=2, ensure_ascii=False),
                         encoding="utf-8")
         print(f"\n[WhisperX] Cold-start complete.")
         print(f"  → SRT written with temp labels (SPEAKER_00, SPEAKER_01 ...)")
         print(f"  → Open {path} and fill in speaker names")
-        print(f"  → Then run: python speaker_setup.py apply")
+        print(f"  → Then run: python speaker_setup.py apply --mapping {path.name}")
 
     # ------------------------------------------------------------------
     # ASR & alignment (unchanged from before)
