@@ -79,26 +79,42 @@ Output (SRT / TXT / JSON)
 
 ```bash
 pip install -r requirements.txt
-### ▶️ Usage
+```
+
+## ▶️ Usage
+Run in web UI
+```bash 
+python gradio.py
+```
 Run full pipeline
+```bash
 python main.py path/to/audio.mp3
+```
 Whisper only
+```bash
 python main.py audio.mp3 --only-whisper
+```
 Silence removal
+```bash
 python audio_processor.py audio.mp3
+```
 Apply manual corrections
+```bash
 python correction_tool.py audio.mp3
-### 🔁 Speaker Learning Workflow
+```
+## 🔁 Speaker Learning Workflow
 Run pipeline (initial run)
 Edit speaker names in .srt
 Apply corrections:
+```bash
 python correction_tool.py audio.mp3
+```
 System improves automatically in future runs
-### 📊 Output
+## 📊 Output
 .srt — subtitles
 .txt — readable transcript
 .json — structured data
-### 🎯 Motivation
+## 🎯 Motivation
 
 Most speech tools focus only on transcription.
 
@@ -107,11 +123,11 @@ This project aims to:
 Improve transcription accuracy
 Maintain consistent speaker identity
 Enable iterative learning from user corrections
-### 📌 Future Work
+## 📌 Future Work
 GUI interface
 Real-time transcription
 API deployment
 Cloud integration
-### 👨‍💻 Author
+## 👨‍💻 Author
 
 Personal project focused on practical system design and real-world problem solving.
