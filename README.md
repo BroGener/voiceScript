@@ -1,133 +1,192 @@
-# 🎙️ Speech Processing & Speaker Diarization System
+# VoiceScript — Speaker-Aware Speech Transcription System
 
-A modular Python pipeline for **speech transcription, speaker diarization, and voiceprint learning**, built on top of Whisper and WhisperX.
+VoiceScript is a modular Python system for **speech transcription, speaker diarization, and speaker identity learning**.
 
-This project focuses on **accuracy, post-processing, and iterative improvement**, rather than raw transcription.
+Unlike standard transcription tools, VoiceScript focuses on:
 
----
-
-## 🚀 Features
-
-### 🔹 Dual-Model Transcription
-- Integrates **OpenAI Whisper** (accurate timestamps)
-- Uses **WhisperX** for alignment and speaker diarization
-- Custom **Reconciler** merges outputs intelligently
-
-### 🔹 Speaker Recognition & Learning
-- Speaker embedding with cosine similarity matching
-- Persistent voiceprint database
-- Supports iterative learning from corrections
-
-### 🔹 Audio Preprocessing
-- Silence detection and removal (FFmpeg)
-- Optional:
-  - Re-transcription (higher accuracy)
-  - Timeline remapping (faster)
-
-### 🔹 Manual Correction Workflow
-- Edit `.srt` files to fix speaker labels
-- Apply corrections to update voiceprint database
-- Confidence-based embedding updates
-
-### 🔹 Post-processing Pipeline
-- Overlap resolution
-- Short segment removal
-- Speaker segment merging
+* **consistent speaker labeling across recordings**
+* **correction-driven learning workflow**
+* **reusable speaker identity (voiceprint database)**
 
 ---
 
-## 🧠 Architecture
-Audio Input
-↓
-Whisper (ASR)
-↓
-WhisperX (Alignment + Diarization)
-↓
-Reconciler (Merge outputs)
-↓
-Post-processing
-↓
-Speaker Matching & Learning
-↓
-Output (SRT / TXT / JSON)
+## Demo
+
+*(Add a screenshot or GIF of the Gradio UI here — highly recommended)*
 
 ---
 
-## 📂 Project Structure
-.
-├── main.py # Main pipeline
-├── audio_processor.py # Silence detection & audio processing
-├── transcriber_whisper.py # Whisper wrapper
-├── transcriber_whisperx.py # WhisperX + diarization
-├── reconciler.py # Dual-model merging logic
-├── speaker_manager.py # Voiceprint database
-├── correction_tool.py # Manual correction workflow
-├── config.py # Configuration
+## Quick Start (Recommended)
 
-
----
-
-## ⚙️ Setup
-
-### Requirements
-
-- Python 3.10+
-- FFmpeg installed
-- CUDA (optional but recommended)
-
-### Install dependencies
+Run the web interface:
 
 ```bash
-pip install -r requirements.txt
+python gradio_app.py
 ```
 
-## ▶️ Usage
-Run in web UI
-```bash 
-python gradio.py
+Then open the local URL in your browser.
+
+You can:
+
+* Upload an audio file
+* Generate speaker-labeled transcripts
+* Export SRT / TXT / JSON outputs
+
+---
+
+## Key Features
+
+* **Dual-model transcription** using Whisper and WhisperX
+* **Speaker diarization with identity persistence**
+* **Custom reconciliation layer** to merge model outputs
+* **Voiceprint database** for consistent speaker recognition
+* **Manual correction workflow (SRT-based)** for iterative improvement
+* **Silence detection and audio preprocessing (FFmpeg)**
+* **Multiple output formats** (SRT, TXT, JSON)
+* **Environment version tracking for reproducibility**
+
+---
+
+## System Architecture
+
+```text
+Audio Input
+   ↓
+Whisper (timestamp accuracy)
+   ↓
+WhisperX (alignment + diarization)
+   ↓
+Reconciler (merge + conflict handling)
+   ↓
+Speaker Manager (identity mapping + learning)
+   ↓
+Output (SRT / TXT / JSON)
 ```
-Run full pipeline
+
+Main pipeline implementation: 
+
+---
+
+## Core Modules
+
+* `main.py` — pipeline orchestrator
+* `transcriber_whisper.py` — Whisper transcription
+* `transcriber_whisperx.py` — WhisperX alignment & diarization
+* `reconciler.py` — dual-model merging logic
+* `speaker_manager.py` — voiceprint database & speaker matching
+* `correction_tool.py` — manual correction workflow
+* `audio_processor.py` — silence detection & audio trimming
+
+Example module (audio preprocessing): 
+
+---
+
+## Workflow
+
+### 1. First Run (Cold Start)
+
 ```bash
 python main.py path/to/audio.mp3
 ```
-Whisper only
-```bash
-python main.py audio.mp3 --only-whisper
-```
-Silence removal
-```bash
-python audio_processor.py audio.mp3
-```
-Apply manual corrections
-```bash
-python correction_tool.py audio.mp3
-```
-## 🔁 Speaker Learning Workflow
-Run pipeline (initial run)
-Edit speaker names in .srt
-Apply corrections:
-```bash
-python correction_tool.py audio.mp3
-```
-System improves automatically in future runs
-## 📊 Output
-.srt — subtitles
-.txt — readable transcript
-.json — structured data
-## 🎯 Motivation
 
-Most speech tools focus only on transcription.
+* System generates temporary speaker labels (e.g., SPEAKER_00)
+* A mapping file is created
 
-This project aims to:
+---
 
-Improve transcription accuracy
-Maintain consistent speaker identity
-Enable iterative learning from user corrections
-## 📌 Future Work
-GUI interface
-Real-time transcription
-API deployment
-Cloud integration
-## 👨‍💻 Author
+### 2. Assign Speaker Names
 
-Personal project focused on practical system design and real-world problem solving.
+```bash
+python speaker_setup.py apply
+```
+
+* Replace temporary labels with real names
+* Initialize speaker database
+
+---
+
+### 3. Improve Accuracy (Optional)
+
+Edit the generated `.srt` file and correct speaker names, then run:
+
+```bash
+python correction_tool.py path/to/audio.mp3
+```
+
+* Updates speaker embeddings
+* Improves future recognition
+
+Correction workflow: 
+
+---
+
+## CLI Usage (Advanced)
+
+Full pipeline:
+
+```bash
+python main.py path/to/audio.mp3
+```
+
+Whisper only:
+
+```bash
+python main.py path/to/audio.mp3 --only-whisper
+```
+
+WhisperX only:
+
+```bash
+python main.py path/to/audio.mp3 --only-whisperx
+```
+
+---
+
+## Technical Highlights
+
+* Designed a **modular Python architecture** with independent components
+* Implemented **dual-model reconciliation logic** for improved accuracy
+* Built a **speaker identity system using embeddings and similarity matching**
+* Developed a **correction feedback loop** to iteratively improve results
+* Integrated **FFmpeg-based audio preprocessing**
+* Created a **persistent speaker database with weighted embeddings**
+
+Speaker system implementation: 
+
+---
+
+## Project Scope
+
+This is a **personal engineering project** focused on:
+
+* solving real-world transcription limitations
+* building reusable speech-processing tools
+* demonstrating system design and backend architecture
+
+It is designed for **local usage and experimentation**, not production deployment.
+
+---
+
+## Requirements
+
+* Python 3.10+
+* FFmpeg
+* GPU recommended (CUDA)
+
+---
+
+## Notes
+
+* First run requires manual speaker labeling
+* Performance depends on hardware and audio quality
+* Large models may require significant VRAM
+
+---
+
+## Author
+
+Personal project for learning and practical problem solving in:
+
+* Python backend development
+* AI/audio processing pipelines
+* system design and tooling
